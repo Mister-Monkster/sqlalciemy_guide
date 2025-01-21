@@ -1,6 +1,6 @@
-from sqlalchemy import text, insert, select
+from sqlalchemy import text, insert, select, func, cast, Integer, and_
 from src.database import sync_engine, async_engine, session_factory, async_session_factory
-from src.models import WorkersOrm, Base
+from src.models import WorkersOrm, Base, ResumesOrm
 
 
 class SyncORM:
@@ -25,7 +25,7 @@ class SyncORM:
         with session_factory() as session:
             # worker_id = 1
             # worker_jack = session.get(WorkersOrm, worker_id)
-            query = select(WorkersOrm) #SELECT * FROM workers
+            query = select(WorkersOrm)  #SELECT * FROM workers
             result = session.execute(query)
             workers = result.scalars().all()
             print(f"{workers=}")
@@ -37,6 +37,75 @@ class SyncORM:
             worker_michael.username = new_username
             session.refresh(worker_michael)
             session.commit()
+
+    @staticmethod
+    def insert_resumes():
+        with session_factory() as session:
+            data = (
+                {
+                    "title": "Python Junior Developer",
+                    "compensation": 50000,
+                    "workload": 'fulltime',
+                    "worker_id": 1
+                },
+                {
+                    "title": "Python Разработчик",
+                    "compensation": 150000,
+                    "workload": 'fulltime',
+                    "worker_id": 1
+                },
+                {
+                    "title": "Python Data Engineer",
+                    "compensation": 250000,
+                    "workload": 'parttime',
+                    "worker_id": 2
+                },
+                {
+                    "title": "Data Scientist",
+                    "compensation": 300000,
+                    "workload": 'fulltime',
+                    "worker_id": 2
+                }
+            )
+            for worker in data:
+                title = worker["title"]
+                compensation = worker["compensation"]
+                workload = worker["workload"]
+                worker_id = worker["worker_id"]
+                session.add(
+                    ResumesOrm(title=title,
+                               compensation=compensation,
+                               workload=workload,
+                               worker_id=worker_id)
+                )
+            session.commit()
+
+    @staticmethod
+    def select_resumes_avg_compensation(like_language: str = "Python"):
+        """
+        select workload, avg(compensation)::int as avg_compensation
+        from resumes
+        where title like '%Python%' and compensation > 40000
+        group by workload
+        """
+        with session_factory() as session:
+            query = (
+                select(ResumesOrm.workload,
+                       cast(func.avg(ResumesOrm.compensation), Integer).label("avg_compensation"),
+                       )
+                .select_from(ResumesOrm)
+                .filter(and_(ResumesOrm.title.contains(like_language),
+                             ResumesOrm.compensation > 40000
+                             ))
+                .group_by(ResumesOrm.workload)
+                .having(cast(func.avg(ResumesOrm.compensation), Integer) > 70000)
+            )
+            print(query.compile(compile_kwargs={"literal_binds": True}))
+            res = session.execute(query)
+            result = res.all()
+            print(result[0].avg_compensation)
+
+
 
 class AsyncORM:
     @staticmethod
